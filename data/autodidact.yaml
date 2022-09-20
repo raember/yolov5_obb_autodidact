@@ -1,0 +1,6 @@
+path: ../datasets/autodidact
+train: train.txt
+val: val.txt
+test: test.txt
+nc: 4
+names: [ 'Bed', 'Staff', 'Devices', 'Patient' ]

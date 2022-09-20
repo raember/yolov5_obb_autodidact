@@ -237,23 +237,21 @@ def idx_to_img_path(task: int, frame: int) -> Path:
     return Path(f"frame_{frame:06}.PNG")
 
 
-def visualize_sample(idx: Tuple[int, int], data: dict, folder: Path, save_to_disk: bool = False) -> Image.Image:
-    task, frame = idx
-    out = folder / str(task) / 'visualized'
-    out.mkdir(parents=True, exist_ok=True)
-    img_path = folder / str(task) / 'images' / idx_to_img_path(*idx)
+def visualize_sample(idx: Tuple[int, int], data: dict, folder: Path, img_path: Path, name: str,
+                     save_to_disk: bool = False) -> Image.Image:
+    folder.mkdir(parents=True, exist_ok=True)
     assert img_path.exists()
-    vis_path = out / img_path.name
+    vis_fp = folder / name
     img = Image.open(img_path)
     # img = img.convert('RGBA')
     draw = ImageDraw.Draw(img)
     ann = data['gt'].loc[[idx]]
-    for (task, frame), (source, label, cx, cy, w, h, rot) in ann.iterrows():
+    for (task, frame), (source, date_str, bed, fps, duration, label, cx, cy, w, h, rot) in ann.iterrows():
         cls = LABELS[int(label)]
         col = data['labels'][cls]
         draw_bbox(draw, cx, cy, w, h, rot, col, img.size, cls)
     if save_to_disk:
-        img.save(vis_path)
+        img.save(vis_fp)
     return img
 
 
@@ -279,10 +277,23 @@ def export_dataset(data: dict, folder: Path):
         idx += count
     # noinspection PyUnboundLocalVariable
     files[dataset_name] = (files[dataset_name][0], total)
+    to_yaml(data, Path('..', 'datasets'), ORG.lower(), tuple(files.keys()))
     with tqdm(total=total) as bar:
         for dataset_name, (idx0, idx1) in files.items():
             df = data['gt'].loc[index[idx0:idx1]]
             export_subset(df, data, folder, dataset_name, bar)
+
+
+def to_yaml(data: dict, root_path: Path, name: str, set_names: Tuple[str, str, str]):
+    path = Path('data', name).with_suffix('.yaml')
+    with open(path, 'w') as fp:
+        fp.write(f'path: {root_path / name}\n')
+        fp.write(f'train: {set_names[0]}.txt\n')
+        fp.write(f'val: {set_names[1]}.txt\n')
+        fp.write(f'test: {set_names[2]}.txt\n')
+        labels = list(map(lambda s: f"'{s}'", data["labels"].keys()))
+        fp.write(f'nc: {len(labels)}\n')
+        fp.write(f'names: [{", ".join(labels)}]\n')
 
 
 def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm = None) -> bool:
@@ -294,7 +305,8 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
     label_dir.mkdir(exist_ok=True)
     vis_dir.mkdir(exist_ok=True)
 
-    check_if_sample_exists = False
+    left_over_samples = list(map(Path, img_dir.glob('*.png')))
+    check_if_sample_exists = True
     added_samples = False
     index = df.index.unique()
     for idx in index:
@@ -303,6 +315,8 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
         orig_img_path = folder / str(task) / 'images' / idx_to_img_path(*idx)
         assert orig_img_path.exists(), f"Source file does not exist: {orig_img_path}"
         img_fp = img_dir / f"{sample_name}.png"
+        if img_fp in left_over_samples:
+            left_over_samples.remove(img_fp)
         if check_if_sample_exists and img_fp.exists():
             # Don't add to the set - it already exists
             if bar is not None:
@@ -325,10 +339,15 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
             bar.update()
         added_samples = True
 
-        visualize_sample(idx, data, vis_dir, True)
+        visualize_sample(idx, data, vis_dir, orig_img_path, img_fp.name, True)
 
         # Only link now, so in case something breaks, we don't skip recreating this sample
         os.link(orig_img_path, img_fp)
+    # Clean up:
+    for img_fp in left_over_samples:
+        img_fp.unlink()
+        (label_dir / img_fp.name).with_suffix('.txt').unlink(missing_ok=True)
+        (vis_dir / img_fp.name).unlink(missing_ok=True)
     return added_samples
 
 
