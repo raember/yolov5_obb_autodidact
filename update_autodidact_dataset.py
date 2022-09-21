@@ -300,7 +300,7 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
     base_dir = Path('..', 'datasets', ORG.lower(), name.lower())
     img_dir = base_dir / 'images'
     label_dir = base_dir / 'labelTxt'
-    vis_dir = base_dir / 'visualizations'
+    vis_dir = base_dir.parent / f'{name.lower()}_visualizations'
     img_dir.mkdir(exist_ok=True, parents=True)
     label_dir.mkdir(exist_ok=True)
     vis_dir.mkdir(exist_ok=True)
@@ -309,40 +309,42 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
     check_if_sample_exists = True
     added_samples = False
     index = df.index.unique()
-    for idx in index:
-        task, frame = idx
-        sample_name = f"task_{task:03}_frame_{frame:06}"
-        orig_img_path = folder / str(task) / 'images' / idx_to_img_path(*idx)
-        assert orig_img_path.exists(), f"Source file does not exist: {orig_img_path}"
-        img_fp = img_dir / f"{sample_name}.png"
-        if img_fp in left_over_samples:
-            left_over_samples.remove(img_fp)
-        if check_if_sample_exists and img_fp.exists():
-            # Don't add to the set - it already exists
+    with open(base_dir / (name + '.txt'), 'w') as index_file:
+        for idx in index:
+            task, frame = idx
+            sample_name = f"task_{task:03}_frame_{frame:06}"
+            orig_img_path = folder / str(task) / 'images' / idx_to_img_path(*idx)
+            assert orig_img_path.exists(), f"Source file does not exist: {orig_img_path}"
+            img_fp = img_dir / f"{sample_name}.png"
+            if img_fp in left_over_samples:
+                left_over_samples.remove(img_fp)
+            index_file.write(f"{img_fp.name}\n")
+            if check_if_sample_exists and img_fp.exists():
+                # Don't add to the set - it already exists
+                if bar is not None:
+                    bar.update()
+                continue
+
+            lbl_fp = label_dir / f"{sample_name}.txt"
+            labels = {}
+            with open(lbl_fp, 'w') as fp:
+                for i, ((task, frame), (source, date_str, bed, fps, duration, label, cx, cy, w, h, rot)) in enumerate(
+                        df.loc[[idx]].iterrows()):
+                    xtl = cx - w / 2
+                    ytl = cy - h / 2
+                    xbr = cx + w / 2
+                    ybr = cy + h / 2
+                    bbox = rotate(np.array([(xtl, ytl), (xbr, ytl), (xbr, ybr), (xtl, ybr)]), rot)
+                    elements = [*map(lambda flt: f"{flt:.2f}", bbox.reshape((8,)).tolist()), label, 1.0]
+                    fp.write(f"{', '.join(map(str, elements))}\n")
             if bar is not None:
                 bar.update()
-            continue
+            added_samples = True
 
-        lbl_fp = label_dir / f"{sample_name}.txt"
-        labels = {}
-        with open(lbl_fp, 'w') as fp:
-            for i, ((task, frame), (source, date_str, bed, fps, duration, label, cx, cy, w, h, rot)) in enumerate(
-                    df.loc[[idx]].iterrows()):
-                xtl = cx - w / 2
-                ytl = cy - h / 2
-                xbr = cx + w / 2
-                ybr = cy + h / 2
-                bbox = rotate(np.array([(xtl, ytl), (xbr, ytl), (xbr, ybr), (xtl, ybr)]), rot)
-                elements = [*map(lambda flt: f"{flt:.2f}", bbox.reshape((8,)).tolist()), label, 1.0]
-                fp.write(f"{', '.join(map(str, elements))}\n")
-        if bar is not None:
-            bar.update()
-        added_samples = True
+            visualize_sample(idx, data, vis_dir, orig_img_path, img_fp.name, True)
 
-        visualize_sample(idx, data, vis_dir, orig_img_path, img_fp.name, True)
-
-        # Only link now, so in case something breaks, we don't skip recreating this sample
-        os.link(orig_img_path, img_fp)
+            # Only link now, so in case something breaks, we don't skip recreating this sample
+            os.link(orig_img_path, img_fp)
     # Clean up:
     for img_fp in left_over_samples:
         img_fp.unlink()
