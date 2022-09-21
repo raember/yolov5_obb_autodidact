@@ -19,11 +19,14 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+import wandb
 import yaml
 from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD, Adam, lr_scheduler
 from tqdm import tqdm
+
+wandb.init(project="autodidact", entity="raember")
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -171,6 +174,13 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     else:
         lf = one_cycle(1, hyp['lrf'], epochs)  # cosine 1->hyp['lrf']
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # plot_lr_scheduler(optimizer, scheduler, epochs)
+
+    wandb.config = {
+        "learning_rate": hyp['lr0'],
+        "epochs": epochs,
+        "batch_size": batch_size,
+    }
+    wandb.watch(model)
 
     # EMA
     ema = ModelEMA(model) if RANK in [-1, 0] else None
@@ -329,6 +339,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                 if opt.quad:
                     loss *= 4.
 
+            wandb.log({"loss": loss})
             # Backward
             scaler.scale(loss).backward()
 
