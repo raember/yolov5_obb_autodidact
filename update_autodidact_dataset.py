@@ -303,10 +303,11 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
     vis_dir = base_dir.parent / f'{name.lower()}_visualizations'
     img_dir.mkdir(exist_ok=True, parents=True)
     label_dir.mkdir(exist_ok=True)
+    shutil.rmtree(vis_dir, ignore_errors=True)
     vis_dir.mkdir(exist_ok=True)
 
     left_over_samples = list(map(Path, img_dir.glob('*.png')))
-    check_if_sample_exists = True
+    check_if_sample_exists = False
     added_samples = False
     index = df.index.unique()
     with open(base_dir / (name + '.txt'), 'w') as index_file:
@@ -318,7 +319,7 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
             img_fp = img_dir / f"{sample_name}.png"
             if img_fp in left_over_samples:
                 left_over_samples.remove(img_fp)
-            index_file.write(f"{img_fp.name}\n")
+            index_file.write(f"{img_fp.relative_to(base_dir)}\n")
             if check_if_sample_exists and img_fp.exists():
                 # Don't add to the set - it already exists
                 if bar is not None:
@@ -326,7 +327,6 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
                 continue
 
             lbl_fp = label_dir / f"{sample_name}.txt"
-            labels = {}
             with open(lbl_fp, 'w') as fp:
                 for i, ((task, frame), (source, date_str, bed, fps, duration, label, cx, cy, w, h, rot)) in enumerate(
                         df.loc[[idx]].iterrows()):
@@ -335,8 +335,8 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
                     xbr = cx + w / 2
                     ybr = cy + h / 2
                     bbox = rotate(np.array([(xtl, ytl), (xbr, ytl), (xbr, ybr), (xtl, ybr)]), rot)
-                    elements = [*map(lambda flt: f"{flt:.2f}", bbox.reshape((8,)).tolist()), label, 1.0]
-                    fp.write(f"{', '.join(map(str, elements))}\n")
+                    elements = [*map(lambda flt: f"{flt:.2f}", bbox.reshape((8,)).tolist()), LABELS[label], 1]
+                    fp.write(f"{' '.join(map(str, elements))}\n")
             if bar is not None:
                 bar.update()
             added_samples = True
@@ -344,6 +344,7 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
             visualize_sample(idx, data, vis_dir, orig_img_path, img_fp.name, True)
 
             # Only link now, so in case something breaks, we don't skip recreating this sample
+            img_fp.unlink(missing_ok=True)
             os.link(orig_img_path, img_fp)
     # Clean up:
     for img_fp in left_over_samples:
