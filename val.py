@@ -29,7 +29,7 @@ from models.common import DetectMultiBackend
 from utils.callbacks import Callbacks
 from utils.datasets import create_dataloader
 from utils.general import (LOGGER, box_iou, check_dataset, check_img_size, check_requirements, check_yaml,
-                           coco80_to_coco91_class, colorstr, increment_path, non_max_suppression, print_args,
+                           coco80_to_coco91_class, colorstr, increment_path, print_args,
                            scale_coords, scale_polys, xywh2xyxy, xyxy2xywh, non_max_suppression_obb)
 from utils.metrics import ConfusionMatrix, ap_per_class
 from utils.plots import output_to_target, plot_images, plot_val_study
@@ -164,8 +164,9 @@ def run(data,
         model.warmup(imgsz=(1, 3, imgsz, imgsz), half=half)  # warmup
         pad = 0.0 if task == 'speed' else 0.5
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
-        dataloader = create_dataloader(data[task], imgsz, batch_size, stride, names, single_cls, pad=pad, rect=pt,
-                                       workers=workers, prefix=colorstr(f'{task}: '))[0]
+        dataloader = \
+        create_dataloader(data[task], imgsz, batch_size, stride, names.values(), single_cls, pad=pad, rect=pt,
+                          workers=workers, prefix=colorstr(f'{task}: '))[0]
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
@@ -307,7 +308,9 @@ def run(data,
 
         try:  # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
             check_requirements(['pycocotools'])
+            # noinspection PyUnresolvedReferences
             from pycocotools.coco import COCO
+            # noinspection PyUnresolvedReferences
             from pycocotools.cocoeval import COCOeval
 
             anno = COCO(anno_json)  # init annotations api
