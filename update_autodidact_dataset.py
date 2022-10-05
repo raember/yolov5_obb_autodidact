@@ -77,20 +77,20 @@ def download_dataset(task_id: int, folder: Path) -> Tuple[Path, bool]:
         "Sec-Fetch-Site": "same-origin",
     }
     requests.get(url, headers=headers).raise_for_status()
-    print("Requesting dataset export:")
-    for _ in range(19):
+    tqdm.write("Requesting dataset export:")
+    for _ in range(29):
         resp = requests.get(url, headers=headers)
         resp.raise_for_status()
         if resp.status_code == 202:
             # Accepted
-            print('.', end='')
+            tqdm.write('.', end='')
         elif resp.status_code == 201:
             # Created
-            print()
+            tqdm.write('')
             break
         time.sleep(1)
     else:
-        raise Exception("Failed to get the dataset within 20s")
+        raise Exception("Failed to get the dataset within 30s")
 
     url2 = f"{url}&action=download"
     headers2 = {
@@ -108,7 +108,7 @@ def download_dataset(task_id: int, folder: Path) -> Tuple[Path, bool]:
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "same-origin",
     }
-    print("Downloading dataset:")
+    tqdm.write("Downloading dataset:")
     resp2 = requests.get(url2, headers=headers2)
     try:
         resp2.raise_for_status()
@@ -256,7 +256,7 @@ def visualize_sample(idx: Tuple[int, int], data: dict, folder: Path, img_path: P
 
 
 def visualize_dataset(data: dict, folder: Path, save_to_disk: bool = True):
-    print('Visualizing dataset')
+    tqdm.write('Visualizing dataset')
     index = data['gt'].index.unique()
     for idx in tqdm(index):
         visualize_sample(idx, data, folder, save_to_disk=save_to_disk)
@@ -361,6 +361,7 @@ def export_subset(df: DataFrame, data: dict, folder: Path, name: str, bar: tqdm 
 
 if __name__ == '__main__':
     dataset = {}
+    should_export = False
     for task_id in trange(200):
         is_new = False
         try:
@@ -373,9 +374,9 @@ if __name__ == '__main__':
         except Exception as err:
             tqdm.write(f"Task {task_id}: {str(err)}")
             continue
-        if is_new or True:
-            dataset = concat_data_subsets(dataset, read_data_subset(path, task_id))
-    if len(dataset) == 0:
+        should_export |= is_new
+        dataset = concat_data_subsets(dataset, read_data_subset(path, task_id))
+    if not should_export:
         print("Nothing to do")
         exit(0)
     export_dataset(dataset, OUT)
